@@ -11,16 +11,6 @@ $irc = new Net::IRC;
 
 %svrlist = ();
 $svrini = new Config::IniFiles(-file => "servers.ini");
-foreach $x ($svrini->Sections) {
-  $svrlist{$x} = {
-    'nick' => $svrini->val($x, 'nick'),
-    'servers' => $svrini->val($x, 'servers'),
-    'ircname' => $svrini->val($x, 'ircname'),
-    'channel' => $svrini->val($x, 'channel')
-  };
-  print "Loaded $x from INI\n";
-}
-
 $confini = new Config::IniFiles(-file => "config.ini");
 
 $game=0;
