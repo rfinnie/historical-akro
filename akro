@@ -448,6 +448,7 @@ sub pumpothers_privmsg {
   foreach $x ($svrini->Sections) {
     foreach $channel (split(/,/, $svrini->val($x, 'channel'))) {
       next if ($net eq $x) && ($channel eq $nchannel);
+      next unless $svrlist{$x}->{'svr'};
       $svrlist{$x}->{'svr'}->privmsg($channel, "$nchannel/$net: <$nick> $msg");
     }
   }
@@ -458,6 +459,7 @@ sub pumpothers_action {
   foreach $x ($svrini->Sections) {
     foreach $channel (split(/,/, $svrini->val($x, 'channel'))) {
       next if ($net eq $x) && ($channel eq $nchannel);
+      next unless $svrlist{$x}->{'svr'};
       $svrlist{$x}->{'svr'}->privmsg($channel, "$nchannel/$net: * $nick $msg");
     }
   }
@@ -468,6 +470,7 @@ sub pumpothers_join {
   foreach $x ($svrini->Sections) {
     next if $net eq $x;
     foreach $channel (split(/,/, $svrini->val($x, 'channel'))) {
+      next unless $svrlist{$x}->{'svr'};
       $svrlist{$x}->{'svr'}->privmsg($channel, "*** $nick\@$net has joined $nchannel");
     }
   }
@@ -478,6 +481,7 @@ sub pumpothers_part {
   foreach $x ($svrini->Sections) {
     next if $net eq $x;
     foreach $channel (split(/,/, $svrini->val($x, 'channel'))) {
+      next unless $svrlist{$x}->{'svr'};
       $svrlist{$x}->{'svr'}->privmsg($channel, "*** $nick\@$net has left $nchannel");
     }
   }
