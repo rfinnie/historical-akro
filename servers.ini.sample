@@ -1,25 +1,25 @@
 [EFNet]
 nick=akr0
-server=irc.homelien.no|irc.prison.net:6667|irc.lagged.org
+servers=irc.homelien.no|irc.prison.net:6667|irc.lagged.org
 ircname=Play Akro?
-channel=#akro,fo0bar
+channel=#akro,#fo0bar
 
 [HybNet]
 nick=akro
-server=irc.denon.cx
+servers=irc.denon.cx
 ircname=Play Akro?
 channel=#akro
 nickserv_password=password
 
 [Colobox]
 nick=akro
-server=irc.colobox.com
+servers=irc.colobox.com
 ircname=Play Akro?
 channel=#akro
 
 [GIMPNet]
 nick=akro
-server=irc.gimpnet.org
+servers=irc.gimpnet.org
 ircname=Play Akro?
 channel=#akro
 
