@@ -8,6 +8,8 @@ $| = 0;
 use Net::IRC;
 $irc = new Net::IRC;
 
+$admin_password = "password";
+
 #### You probably only want to change these 
 $svrlist{'irc.prison.net'} = {
   'nick' => 'akr0',
@@ -187,31 +189,33 @@ sub on_msg {
 sub process_command {
   my($self, $event, $net) = @_;
 
-  my($command, @args) = split(/ /, substr(($event->args)[0], 1));
-  if($command eq "netstatus") {
-    foreach $sname (keys %svrlist) {
-      $self->privmsg($event->nick, "$sname (" . $svrlist{$sname}->{'net'} . "):");
-      $self->privmsg($event->nick, "  Nickname:  " . $svrlist{$sname}->{'nick'});
-      $self->privmsg($event->nick, "  Server:    " . $svrlist{$sname}->{'server'} . ":" . $svrlist{$sname}->{'port'});
-      $self->privmsg($event->nick, "  IRC Name:  " . $svrlist{$sname}->{'ircname'});
-      $self->privmsg($event->nick, "  Channel:   " . $svrlist{$sname}->{'channel'});
-      $self->privmsg($event->nick, "  Available: " . ($svrlist{$sname}->{'available'} ? 'Yes' : 'NO'));
-      $self->privmsg($event->nick, " ");
+  my($command, $password, @args) = split(/ /, substr(($event->args)[0], 1));
+  if($password eq $admin_password) {
+    if($command eq "netstatus") {
+      foreach $sname (keys %svrlist) {
+        $self->privmsg($event->nick, "$sname (" . $svrlist{$sname}->{'net'} . "):");
+        $self->privmsg($event->nick, "  Nickname:  " . $svrlist{$sname}->{'nick'});
+        $self->privmsg($event->nick, "  Server:    " . $svrlist{$sname}->{'server'} . ":" . $svrlist{$sname}->{'port'});
+        $self->privmsg($event->nick, "  IRC Name:  " . $svrlist{$sname}->{'ircname'});
+        $self->privmsg($event->nick, "  Channel:   " . $svrlist{$sname}->{'channel'});
+        $self->privmsg($event->nick, "  Available: " . ($svrlist{$sname}->{'available'} ? 'Yes' : 'NO'));
+        $self->privmsg($event->nick, " ");
+      }
+    } elsif($command eq "stopnet") {
+      $stopnet = $args[0];
+      $self->privmsg($event->nick, "Stopping net $stopnet (" . $svrlist{$stopnet}->{'net'} . ")");
+      stopnet($stopnet);
+    } elsif($command eq "startnet") {
+      $startnet = $args[0];
+      $self->privmsg($event->nick, "Starting net $startnet (" . $svrlist{$stopnet}->{'net'} . ")");
+      startnet($startnet);
+    } elsif($command eq "shutdown") {
+      $self->privmsg($event->nick, "Shutting down...");
+      foreach $sname (keys %svrlist) {
+        stopnet($sname);
+      }
+      exit 0;
     }
-  } elsif($command eq "stopnet") {
-    $stopnet = $args[0];
-    $self->privmsg($event->nick, "Stopping net $stopnet (" . $svrlist{$stopnet}->{'net'} . ")");
-    stopnet($stopnet);
-  } elsif($command eq "startnet") {
-    $startnet = $args[0];
-    $self->privmsg($event->nick, "Starting net $startnet (" . $svrlist{$stopnet}->{'net'} . ")");
-    startnet($startnet);
-  } elsif($command eq "shutdown") {
-    $self->privmsg($event->nick, "Shutting down...");
-    foreach $sname (keys %svrlist) {
-      stopnet($sname);
-    }
-    exit 0;
   }
 }
 
