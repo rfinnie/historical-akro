@@ -6,6 +6,7 @@
 
 $| = 0;
 use Net::IRC;
+srand;
 use Config::IniFiles;
 $irc = new Net::IRC;
 
@@ -37,7 +38,6 @@ sub on_connect {
       }
       $svrlist{$sname}->{'available'} = 1;
       $self->mode($channel,"+nt");
-      srand(time);
 }
 
 sub on_action {
