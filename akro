@@ -491,7 +491,9 @@ sub on_disconnect {
     my ($self, $event) = @_;
     print "Disconnected from ", $event->from(), " (",
       ($event->args())[0], "). Attempting to reconnect...\n";
-    $self->connect();
+    $net = $self->{'net'};
+    stopnet($net);
+    startnet($net);
 }
 
 sub startnet {
