@@ -6,59 +6,22 @@
 
 $| = 0;
 use Net::IRC;
+use Config::IniFiles;
 $irc = new Net::IRC;
 
-$admin_password = "password";
+%svrlist = ();
+$svrini = new Config::IniFiles(-file => "servers.ini");
+foreach $x ($svrini->Sections) {
+  $svrlist{$x} = {
+    'nick' => $svrini->val($x, 'nick'),
+    'servers' => $svrini->val($x, 'servers'),
+    'ircname' => $svrini->val($x, 'ircname'),
+    'channel' => $svrini->val($x, 'channel')
+  };
+  print "Loaded $x from INI\n";
+}
 
-#### You probably only want to change these 
-$svrlist{'irc.prison.net'} = {
-  'nick' => 'akr0',
-  'server' => 'irc.prison.net',
-  'port' => 6667,
-  'ircname' => 'Play Akro?',
-  'channel' => '#akro,#fo0bar',
-  'net' => 'EFNet'
-};
-
-$svrlist{'irc.denon.cx'} = {
-  'nick' => 'akro',
-  'server' => 'irc.denon.cx',
-  'port' => 6667,
-  'ircname' => 'Play Akro?',
-  'channel' => '#akro',
-  'net' => 'HybNet',
-  'nickserv_password' => 'akr0bot'
-};
-
-$svrlist{'irc.colobox.com'} = {
-  'nick' => 'akro',
-  'server' => 'irc.colobox.com',
-  'port' => 6667,
-  'ircname' => 'Play Akro?',
-  'channel' => '#akro',
-  'net' => 'Colobox'
-};
-
-$svrlist{'dupe.xcf.berkeley.edu'} = {
-  'nick' => 'akro',
-  'server' => 'dupe.xcf.berkeley.edu',
-  'port' => 6667,
-  'ircname' => 'Play Akro?',
-  'channel' => '#akro',
-  'net' => 'GIMPNet'
-};
-
-$acro_think_time=90;
-$bonus_time=20;
-$bonus_points=10;
-$vote_points=10;
-$rounds=10;
-#
-$acro_length_string="2333333344444444455566";
-$acro_char_string="aaaaaabbbbbccccddddeeeeeffffgggghhhhiiiiijjjkllllmmmmnnnnnnooooopppppqrrrrrrsssssssttttttuuuvvwwxyyyz";
-#### You probably only want to change these 
-
-
+$confini = new Config::IniFiles(-file => "config.ini");
 
 $game=0;
 $game_starting=0;
@@ -73,48 +36,33 @@ $acro_disp="";
 sub on_connect {
   my $self = shift;
   my($channel, $sname);
-  foreach $sname (keys %svrlist) {
-    if($sname eq $self->server) {
-      if($svrlist{$sname}->{'nickserv_password'}) {
+  $sname = $self->{'net'};
+      if($svrini->val($sname, 'nickserv_password')) {
         print "$sname: Registering with NickServ\n";
-        $self->privmsg('NickServ', 'IDENTIFY ' . $svrlist{$sname}->{'nickserv_password'});
+        $self->privmsg('NickServ', 'IDENTIFY ' . $svrini->val($sname, 'nickserv_password'));
       }
-      foreach $channel (split(/,/, $svrlist{$sname}->{'channel'})) {
+      foreach $channel (split(/,/, $svrini->val($sname, 'channel'))) {
         print "$sname: Connected.  Joining $channel\n";
         $self->join($channel);
       }
       $svrlist{$sname}->{'available'} = 1;
       $self->mode($channel,"+nt");
       srand(time);
-    }
-  }
 }
 
 sub on_action {
   my ($self, $event) = @_;
   my ($nick, $arg) = ($event->nick, $event->args);
   my($channel) = ($event->to)[0];
-  foreach $sname (keys %svrlist) {
-    if($sname eq $self->server) {
-      $net = $svrlist{$sname}->{'net'};
-      last;
-    }
-  }
 
-  pumpothers_action($nick, $net, $arg, $channel);
+  pumpothers_action($nick, $self->{'net'}, $arg, $channel);
 }
 
 sub on_join {
   my ($self, $event) = @_;
   my ($channel) = ($event->to)[0];
 
-  foreach $sname (keys %svrlist) {
-    if($sname eq $self->server) {
-      $net = $svrlist{$sname}->{'net'};
-      last;
-    }
-  }
-  pumpothers_join($event->nick, $net, $channel);
+  pumpothers_join($event->nick, $self->{'net'}, $channel);
 
   if ($event->userhost=~/imaji\.net$/) {
     $self->mode($channel,"+o",$event->nick);
@@ -128,14 +76,8 @@ sub on_join {
 sub on_part {
   my ($self, $event) = @_;
   my ($channel) = ($event->to)[0];
-  foreach $sname (keys %svrlist) {
-    if($sname eq $self->server) {
-      $net = $svrlist{$sname}->{'net'};
-      last;
-    }
-  }
 
-  pumpothers_part($event->nick, $net, $channel);
+  pumpothers_part($event->nick, $self->{'net'}, $channel);
 }
 
 
@@ -145,14 +87,8 @@ sub on_public {
   my ($to) = $event->to;
   my ($nick,$mynick) = ($event->nick, $self->nick);
   my ($arg) = ($event->args);
-  foreach $sname (keys %svrlist) {
-    if($sname eq $self->server) {
-      $net = $svrlist{$sname}->{'net'};
-      last;
-    }
-  }
 
-  pumpothers_privmsg($nick, $net, $arg, $to);
+  pumpothers_privmsg($nick, $self->{'net'}, $arg, $to);
   if (!$game && !$game_starting) {
     if ($arg eq "start") {
       &start_game($self);
@@ -162,20 +98,15 @@ sub on_public {
 
 sub on_msg {
   my ($self,$event) = @_;
-  foreach $sname (keys %svrlist) {
-    if($sname eq $self->server) {
-      $net = $svrlist{$sname}->{'net'};
-    }
-  }
 
   if(substr(($event->args)[0], 0, 1) eq ":") {
-    process_command($self, $event, $net)
+    process_command($self, $event, $self->{'net'})
   } else {
     $msg_time=time();
     if ($listening_for_acros) {
-      &handle_acro_submission($self,$event,$net);
+      &handle_acro_submission($self,$event,$self->{'net'});
     } elsif ($listening_for_votes) {
-      &handle_acro_votes($self,$event,$net);
+      &handle_acro_votes($self,$event,$self->{'net'});
     } else {
       $self->notice($event->nick,"We're not in play right now. Are we lagged?");
       $self->notice($event->nick,"When I display an acronym...");
@@ -188,30 +119,31 @@ sub on_msg {
 
 sub process_command {
   my($self, $event, $net) = @_;
+  my $admin_password = $confini->val('config', 'admin_password');
 
   my($command, $password, @args) = split(/ /, substr(($event->args)[0], 1));
   if($password eq $admin_password) {
     if($command eq "netstatus") {
-      foreach $sname (keys %svrlist) {
-        $self->privmsg($event->nick, "$sname (" . $svrlist{$sname}->{'net'} . "):");
-        $self->privmsg($event->nick, "  Nickname:  " . $svrlist{$sname}->{'nick'});
-        $self->privmsg($event->nick, "  Server:    " . $svrlist{$sname}->{'server'} . ":" . $svrlist{$sname}->{'port'});
-        $self->privmsg($event->nick, "  IRC Name:  " . $svrlist{$sname}->{'ircname'});
-        $self->privmsg($event->nick, "  Channel:   " . $svrlist{$sname}->{'channel'});
+      foreach $sname ($svrini->Sections) {
+        $self->privmsg($event->nick, "$sname:");
+        $self->privmsg($event->nick, "  Nickname:  " . $svrini->val($sname, 'nick'));
+        $self->privmsg($event->nick, "  Server:    " . $svrlist{$sname}->{'svr'}->{'server'} . ":" . $svrlist{$sname}->{'svr'}->{'port'});
+        $self->privmsg($event->nick, "  IRC Name:  " . $svrini->val($sname, 'ircname'));
+        $self->privmsg($event->nick, "  Channel:   " . $svrini->val($sname, 'channel'));
         $self->privmsg($event->nick, "  Available: " . ($svrlist{$sname}->{'available'} ? 'Yes' : 'NO'));
         $self->privmsg($event->nick, " ");
       }
     } elsif($command eq "stopnet") {
       $stopnet = $args[0];
-      $self->privmsg($event->nick, "Stopping net $stopnet (" . $svrlist{$stopnet}->{'net'} . ")");
+      $self->privmsg($event->nick, "Stopping net $stopnet");
       stopnet($stopnet);
     } elsif($command eq "startnet") {
       $startnet = $args[0];
-      $self->privmsg($event->nick, "Starting net $startnet (" . $svrlist{$stopnet}->{'net'} . ")");
+      $self->privmsg($event->nick, "Starting net $startnet");
       startnet($startnet);
     } elsif($command eq "shutdown") {
       $self->privmsg($event->nick, "Shutting down...");
-      foreach $sname (keys %svrlist) {
+      foreach $sname ($svrini->Sections) {
         stopnet($sname);
       }
       exit 0;
@@ -221,6 +153,7 @@ sub process_command {
 
 sub start_game {
   my $self=$_[0];
+  my $rounds = $confini->val('config', 'rounds');
   pump_privmsg("====================== AKRO ====================");
   pump_privmsg("When I display an ACRONYM, message me the best");
   pump_privmsg("phrase you'd like for that acronym.");
@@ -246,6 +179,7 @@ sub setup_new_game {
 
 sub start_round {
   my $self = $_[0];
+  my $acro_think_time = $confini->val('config', 'acro_think_time');
   &generate_acronym;
   pump_privmsg("==== AKRO ROUND $round STARTING ====");
   pump_privmsg("==== The acronym for round $round is $acro ( $acro_disp )");
@@ -290,6 +224,10 @@ sub five_second_warning {
 sub end_voting {
   my $self=$_[0];
   my $i=1;
+  my $bonus_time = $confini->val('config', 'bonus_time');
+  my $bonus_points = $confini->val('config', 'bonus_points');
+  my $vote_points = $confini->val('config', 'vote_points');
+  my $rounds = $confini->val('config', 'rounds');
   $listening_for_votes=0;
   pump_privmsg("==== TIMES'S UP! ====");
   foreach $userhost (@voting_order) {
@@ -440,6 +378,9 @@ sub handle_acro_votes {
 }
 
 sub generate_acronym {
+  my $acro_length_string = $confini->val('config', 'acro_length_string');
+  my $acro_char_string = $confini->val('config', 'acro_char_string');
+
   my $acro_length_string_length=length($acro_length_string);
   my $acro_char_string_length=length($acro_char_string);
   $acro_length=substr(
@@ -462,9 +403,6 @@ sub generate_acronym {
   }
   $acro=uc($acro);
   $acro_disp=join(' ',split('',$acro));
-  $acro_think_time=$acro_length*10;
-  $acro_think_time=90 if $acro_think_time<90;
-#  $bonus_time=$acro_length*3;
 }
 
 sub insult {
@@ -499,8 +437,8 @@ sub on_source {
 
 sub pump_mode {
   my($mode) = shift;
-  foreach $x (keys %svrlist) {
-    foreach $channel (split(/,/, $svrlist{$x}->{'channel'})) {
+  foreach $x ($svrini->Sections) {
+    foreach $channel (split(/,/, $svrini->val($x, 'channel'))) {
       $svrlist{$x}->{'svr'}->mode($channel, $mode);
     }
   }
@@ -508,8 +446,8 @@ sub pump_mode {
 
 sub pump_privmsg {
   my($msg) = shift;
-  foreach $x (keys %svrlist) {
-    foreach $channel (split(/,/, $svrlist{$x}->{'channel'})) {
+  foreach $x ($svrini->Sections) {
+    foreach $channel (split(/,/, $svrini->val($x, 'channel'))) {
       $svrlist{$x}->{'svr'}->privmsg($channel, $msg);
     }
   }
@@ -517,9 +455,9 @@ sub pump_privmsg {
 
 sub pumpothers_privmsg {
   my($nick, $net, $msg, $nchannel) = @_;
-  foreach $x (keys %svrlist) {
-    foreach $channel (split(/,/, $svrlist{$x}->{'channel'})) {
-      next if ($net eq $svrlist{$x}->{'net'}) && ($channel eq $nchannel);
+  foreach $x ($svrini->Sections) {
+    foreach $channel (split(/,/, $svrini->val($x, 'channel'))) {
+      next if ($net eq $x) && ($channel eq $nchannel);
       $svrlist{$x}->{'svr'}->privmsg($channel, "$nchannel/$net: <$nick> $msg");
     }
   }
@@ -527,9 +465,9 @@ sub pumpothers_privmsg {
 
 sub pumpothers_action {
   my($nick, $net, $msg, $nchannel) = @_;
-  foreach $x (keys %svrlist) {
-    foreach $channel (split(/,/, $svrlist{$x}->{'channel'})) {
-      next if ($net eq $svrlist{$x}->{'net'}) && ($channel eq $nchannel);
+  foreach $x ($svrini->Sections) {
+    foreach $channel (split(/,/, $svrini->val($x, 'channel'))) {
+      next if ($net eq $x) && ($channel eq $nchannel);
       $svrlist{$x}->{'svr'}->privmsg($channel, "$nchannel/$net: * $nick $msg");
     }
   }
@@ -537,9 +475,9 @@ sub pumpothers_action {
 
 sub pumpothers_join {
   my($nick, $net, $nchannel) = @_;
-  foreach $x (keys %svrlist) {
-    next if $net eq $svrlist{$x}->{'net'};
-    foreach $channel (split(/,/, $svrlist{$x}->{'channel'})) {
+  foreach $x ($svrini->Sections) {
+    next if $net eq $x;
+    foreach $channel (split(/,/, $svrini->val($x, 'channel'))) {
       $svrlist{$x}->{'svr'}->privmsg($channel, "*** $nick\@$net has joined $nchannel");
     }
   }
@@ -547,9 +485,9 @@ sub pumpothers_join {
 
 sub pumpothers_part {
   my($nick, $net, $nchannel) = @_;
-  foreach $x (keys %svrlist) {
-    next if $net eq $svrlist{$x}->{'net'};
-    foreach $channel (split(/,/, $svrlist{$x}->{'channel'})) {
+  foreach $x ($svrini->Sections) {
+    next if $net eq $x;
+    foreach $channel (split(/,/, $svrini->val($x, 'channel'))) {
       $svrlist{$x}->{'svr'}->privmsg($channel, "*** $nick\@$net has left $nchannel");
     }
   }
@@ -564,13 +502,21 @@ sub on_disconnect {
 
 sub startnet {
   my($x) = $_[0];
+  my(@servers) = split(/\|/, $svrini->val($x, 'servers'));
+  $server = $servers[int(rand($#servers + 1))];
+  ($server, $port) = split(/:/, $server, 2);
+  $port = ($port ? $port : 6667);
+  print "$x: Connecting to $server:$port\n";
   $svrlist{$x}->{'svr'} = $irc->newconn(
-    Nick    => $svrlist{$x}->{'nick'},
-    Server  => $svrlist{$x}->{'server'},
-    Port    => $svrlist{$x}->{'port'},
-    Ircname => $svrlist{$x}->{'ircname'}
+    Nick    => $svrini->val($x, 'nick'),
+    Server  => $server,
+    Port    => $port,
+    Ircname => $svrini->val($x, 'ircname')
   );
   if($svrlist{$x}->{'svr'}) {
+    $svrlist{$x}->{'svr'}->{'net'} = $x;
+    $svrlist{$x}->{'svr'}->{'server'} = $server;
+    $svrlist{$x}->{'svr'}->{'port'} = $port;
     $svrlist{$x}->{'svr'}->add_handler('msg',    \&on_msg); 
     $svrlist{$x}->{'svr'}->add_handler('public',    \&on_public);
     $svrlist{$x}->{'svr'}->add_handler('cping',    \&on_ping);
@@ -592,11 +538,10 @@ sub stopnet {
   $svrlist{$stopnet}->{'available'} = 0;
   $svrlist{$stopnet}->{'svr'}->quit("By request");
   delete($svrlist{$stopnet}->{'svr'});
-  $svrlist{$stopnet}->{'available'} = 0;
 }
 
 
-foreach $x (keys %svrlist) {
+foreach $x ($svrini->Sections) {
   startnet($x);
 }
 
