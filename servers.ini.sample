@@ -1,6 +1,6 @@
 [EFNet]
 nick=akr0
-server=irc.homelien.no
+server=irc.homelien.no|irc.prison.net:6667|irc.lagged.org
 ircname=Play Akro?
 channel=#akro,fo0bar
 
