@@ -1,0 +1,372 @@
+#!/usr/local/bin/perl
+# 1999/01/28 - Jim.Fondren@pobox.com - created
+# 1999/01/28 - jcf - Acronym bot for IRC
+# 2001/08/17 - jcf - playability enhancements. updating to v1.0 from v0.9
+#
+
+use Net::IRC;
+$irc = new Net::IRC;
+
+#### You probably only want to change these 
+$nick="akro";
+$server="irc.mcs.net";
+$port=6667;
+$ircname="Play Akro?";
+$channel="#akro";
+$acro_think_time=90;
+$bonus_time=20;
+$bonus_points=10;
+$vote_points=10;
+$rounds=10;
+#
+$acro_length_string="2333333344444444455566";
+$acro_char_string="aaaaaabbbbbccccddddeeeeeffffgggghhhhiiiiijjjkllllmmmmnnnnnnooooopppppqrrrrrrsssssssttttttuuuvvwwxyyyz";
+#### You probably only want to change these 
+
+$svr = $irc->newconn(Nick=>$nick, Server=>$server, Port=>$port,
+	Ircname=>$ircname);
+die "Unable to connect to $server on $port assign $nick\n!" unless $svr;
+
+$game=0;
+$game_starting=0;
+$round_started_time=0; 
+$msg_time=0;
+$acro="";
+$acro_length=0;
+$acro_disp="";
+%players=();
+@voting_order=();
+
+sub on_connect {
+	my $self = shift;
+	print "Connected.  Joining $channel\n";
+	$self->join($channel);
+	$self->mode($channel,"+nt");
+	srand(time);
+}
+
+sub on_public {
+	my ($self, $event) = @_;
+	my ($to) = $event->to;
+	my ($nick,$mynick) = ($event->nick, $self->nick);
+	my ($arg) = ($event->args);
+	if (!$game && !$game_starting) {
+		if ($arg eq "start") {
+			&start_game($self);
+		}
+	}
+}
+
+sub on_msg {
+	my ($self,$event) = @_;
+	$msg_time=time();
+	if ($listening_for_acros) {
+		&handle_acro_submission($self,$event);
+	} elsif ($listening_for_votes) {
+		&handle_acro_votes($self,$event);
+	} else {
+		$self->notice($event->nick,"We're not in play right now. Are we lagged?");
+		$self->notice($event->nick,"When I display an acronym...");
+		$self->notice($event->nick,"... MSG me a phrase");
+		$self->notice($event->nick,"When I ask for votes...");
+		$self->notice($event->nick,"... MSG me the NUMBER of the best phrase");
+	}
+}
+
+sub start_game {
+	my $self=$_[0];
+	$self->privmsg($channel,"====================== AKRO ====================");
+	$self->privmsg($channel,"When I display an ACRONYM, message me the best");
+	$self->privmsg($channel,"phrase you'd like for that acronym.");
+	$self->privmsg($channel," ");
+	$self->privmsg($channel,"When I display everyone's phrases, message me the nbumber");
+	$self->privmsg($channel,"of the phrase you think is best (not your own!)");
+	$self->privmsg($channel,"The votes you get increase your score. ");
+	$self->privmsg($channel,"You may even get bonuses!");
+	$self->privmsg($channel," ");
+	$self->privmsg($channel,"Get ready! Round 1 (of $rounds) starts in 20 seconds!");
+	$self->privmsg($channel,"====================== AKRO ====================");
+	$game_starting=1;
+	$self->schedule(20,\&setup_new_game,$self);
+}
+
+sub setup_new_game {
+	my $self = $_[0];
+	$game=1;
+	%players=();
+	$round=1;
+	&start_round($self);
+}
+
+sub start_round {
+	my $self = $_[0];
+	$self->privmsg($channel,"==== AKRO ROUND $round STARTING ====");
+	&generate_acronym;
+	$self->privmsg($channel,"==== The acronym for round $round is $acro ( $acro_disp )");
+	$self->privmsg($channel,"You have $acro_think_time seconds to msg me your phrases");
+	$listening_for_acros=1;
+	$listening_for_votes=0;
+	$self->schedule($acro_think_time-10,\&ten_second_warning,$self);
+	$self->schedule($acro_think_time+10,\&end_round,$self);
+	$round_started_time=time();
+}
+
+sub end_round {
+	my $self=$_[0];
+	$listening_for_acros=0;
+	$listening_for_votes=1;
+	$self->privmsg($channel,"==== Sorry!  Time is up! ====");
+	$self->mode($channel,"+m");
+	$self->privmsg($channel,"==== Here are the acros for $acro in round $round");
+	my %randomize=();
+	foreach $userhost (keys %players) {
+		if ($players{$userhost}{"round"}==$round) {
+			$randomize{$userhost}=rand;
+		}
+	}
+	@voting_order=();
+	my $player=1;
+	foreach $userhost (sort {$randomize{$a} <=> $randomize{$b}} keys %randomize) {
+		push(@voting_order,$userhost);
+		$self->privmsg($channel," $player - ".$players{$userhost}{"acro"});
+		$player++;
+	}
+	$self->privmsg($channel,"==== MSG ME YOUR VOTE NOW (you have 45 seconds) ====");
+	$self->mode($channel,"-m");
+	$self->schedule(40,\&five_second_warning,$self);
+	$self->schedule(50,\&end_voting,$self);
+}
+
+sub five_second_warning {
+	$_[0]->privmsg($channel,"==== 5 SECONDS! ====");
+}
+
+sub end_voting {
+	my $self=$_[0];
+	my $i=1;
+	$listening_for_votes=0;
+	$self->privmsg($channel,"==== TIMES'S UP! ====");
+	foreach $userhost (@voting_order) {
+		$nick=$players{$userhost}{"nick"};
+		$acro=$players{$userhost}{"acro"};
+		$time=$players{$userhost}{"time"};
+		$vote=$players{$userhost}{"vote"}{$round};
+		$votes=$players{$userhost}{"votes"}{$round};
+		$votes=0 if !$votes;
+		$self->privmsg($channel,"$i - $acro ($nick"."'s) - $votes votes");
+		$i++;
+		if (!$vote) {
+			$self->privmsg($channel,"But didn't vote so won't score");
+			next;
+		}
+		if ($time<$bonus_time) {
+			if (!$votes) {
+				$self->privmsg($channel,"(no votes so no speed bonus)");
+			} else {
+				$self->privmsg($channel,"Plus $bonus_points points for speed!");
+				$players{$userhost}{"score"}+=$bonus_points;
+			}
+		}
+		if ($votes) {
+			$players{$userhost}{"score"}+=$votes*$vote_points;
+		}
+	}
+	my $buf="Scores:";
+	foreach $userhost (
+		sort { $players{$b}{"score"} <=> $players{$a}{"score"} } keys %players ) {
+		$buf.=" ".$players{$userhost}{"nick"}.":".$players{$userhost}{"score"};
+	}
+	$self->privmsg($channel,$buf);
+	$self->privmsg($channel,"==== END OF ROUND $round ====");
+	if (++$round>$rounds) {
+		&end_game($self);
+		return;
+	}
+	$self->privmsg($channel,"==== Round $round starts in 20 seconds! ====");
+	$self->schedule(25,\&start_round,$self);
+}
+
+sub end_game {
+	$self=$_[0];
+	$self->privmsg($channel,"==== AND THE WINNER IS... ====");
+	my $highest=-1;
+	my $userhost;
+	my $score;
+	my $winner;
+	foreach $userhost (keys %players) {
+		$score=$players{$userhost}{"score"};
+		if ($score>$highest) {
+			$winner=[$userhost];
+			$highest=$score;
+		} elsif ($score==$highest) {
+			push(@{$winner},$userhost);
+		}
+	}
+	foreach $userhost (@{$winner}) {
+		$self->privmsg($channel," WINNER ===> ".$players{$userhost}{"nick"});
+	}
+	$game=0;
+	$game_starting=0;
+	$self->privmsg($channel,"Thanks for playing. Type: \"start\" for a new game");
+}
+		
+sub ten_second_warning {
+	my $self=$_[0];
+	$self->privmsg($channel,"==== Hurry up! You've got 10 seconds left");
+}
+
+sub handle_acro_submission {
+	my ($self,$event) = @_;
+	my ($nick) = $event->nick;
+	my ($userhost) = $event->userhost;
+	my ($arg) = $event->args;
+	my (@words)=split(' ',$arg);
+	if (@words!=$acro_length) {
+		$self->notice($nick,"ERROR:  There were ".scalar(@words)." words".
+			" in your acro but there are $acro_length letters in the acronym");
+		if (scalar(@words) < $acro_length) {
+			$self->privmsg($channel,&insult($nick,"gave a short phrase"));
+		} else {
+			$self->privmsg($channel,&insult($nick,"gave a long phrase"));
+		}
+		
+		return;
+	}
+	for (my $i=0; $i<$acro_length; $i++) {
+		if (uc(substr($words[$i],0,1)) ne substr($acro,$i,1)) {
+			$self->notice($nick,"ERROR: You said ".$words[$i]."??");
+			$self->privmsg($channel,&insult($nick,"fails the A B C's"));
+			return;
+		}
+		if ($words[$i]!~/^[a-zA-Z!;,\.\?]+$/) {
+			$self->notice($nick,"ERROR: Invalid special chars in your acro");
+			$self->privmsg($channel,&insult($nick,"should stick to the alphabet"));
+			return;
+		}
+	}
+	my $think_time=$msg_time-$round_started_time;
+	$players{$userhost}{"nick"}=$nick;
+	$players{$userhost}{"acro"}=$arg;
+	$players{$userhost}{"time"}=$think_time;
+	$players{$userhost}{"round"}=$round;
+	$players{$userhost}{"score"}+=0;
+	$self->notice($nick,"Got your phrase in $think_time seconds!");
+	$self->privmsg($channel,"Received a phrase in $think_time seconds");
+}
+
+sub handle_acro_votes {
+	my ($self,$event) = @_;
+	my ($nick) = $event->nick;
+	my ($userhost) = $event->userhost;
+	my ($arg) = $event->args;
+	my $vote=0;
+	if (!$players{$userhost}) {
+		$self->notice($nick,"Only players can vote!");
+		return;
+	}
+	if ($arg=~/^\s*(\d+)\s*$/) {
+		$vote=$1;
+	} else {
+		$self->notice($nick,"Your vote has to be a number from 1 to ".
+			scalar(@voting_order));
+		return;
+	}
+	if ($vote<1 || $vote>@voting_order) {
+		$self->notice($nick,"Your vote has to be a number from 1 to ".
+			scalar(@voting_order));
+		return;
+	}
+	if ($userhost eq $voting_order[$vote-1]) {
+		$self->notice($nick,"Hahaha, we don't let you vote for yourself.");
+		return;
+	}
+	my $old_vote=$players{$userhost}{"vote"}{$round};
+	if ($old_vote) {
+		$players{$voting_order[$old_vote-1]}{"votes"}{$round}--;
+		$self->notice($nick,"Your vote has been changed.");
+	} else {
+		$self->notice($nick,"Your vote has been tallied. Thanks!");
+	}
+	$players{$userhost}{"vote"}{$round}=$vote;
+	$players{$voting_order[$vote-1]}{"votes"}{$round}++;
+}
+
+sub generate_acronym {
+	my $acro_length_string_length=length($acro_length_string);
+	my $acro_char_string_length=length($acro_char_string);
+	$acro_length=substr(
+		$acro_length_string,
+		int(rand()*$acro_length_string_length),
+		1
+	);
+	$acro="";
+	my %used=();
+	my $letter;
+	while (length($acro)<$acro_length) {
+		$letter=substr(
+			$acro_char_string,
+			int(rand()*$acro_char_string_length),
+			1
+		);
+		next if $used{$letter};
+		$used{$letter}++;
+		$acro.=$letter;
+	}
+	$acro=uc($acro);
+	$acro_disp=join(' ',split('',$acro));
+	$acro_think_time=$acro_length*10;
+	$acro_think_time=90 if $acro_think_time<90;
+#	$bonus_time=$acro_length*3;
+}
+
+sub insult {
+	my ($nick,$reason) = @_;
+	my @insults=split(/\n/,<<"EOT");
+What a wanker!
+What a mar000000n!
+Can it get any uglier?
+Where'd your brains come from?
+Do you fuck goats too?
+EOT
+	return "$nick $reason. ".$insults[int(rand()*scalar(@insults))];
+}
+
+sub on_ping {
+	my ($self, $event) = @_;
+	my $nick = $event->nick;
+	$self->ctcp_reply($nick, join(' ',($event->args)));
+}
+
+sub on_version {
+	my ($self, $event) = @_;
+	my $nick = $event->nick;
+	$self->ctcp_reply($nick, "VERSION akro.pl v0.9 - I'm a NICE game bot");
+}
+
+sub on_source {
+	my ($self, $event) = @_;
+	my $nick = $event->nick;
+	$self->ctcp_reply($nick, "SOURCE akro.pl v0.9 - www.cpan.org *when complete*");
+}
+
+sub on_join {
+	my ($self, $event) = @_;
+	my ($channel) = ($event->to)[0];
+	if ($event->userhost=~/imaji\.net$/) {
+		$self->mode($channel,"+o",$event->nick);
+	} elsif ($event->userhost=~/cartotech\.com$/) {
+		$self->mode($channel,"+o",$event->nick);
+	} else {
+		$self->notice($event->nick,"Play acro? For help message me \"help\"");
+	}
+}
+
+
+$svr->add_handler('msg',		\&on_msg); 
+$svr->add_handler('public',		\&on_public);
+$svr->add_handler('cping',		\&on_ping);
+$svr->add_handler('cversion',	\&on_version);
+$svr->add_handler('csource',	\&on_source);
+$svr->add_handler('join',		\&on_join);
+$svr->add_global_handler(376,	\&on_connect);
+$irc->start;
