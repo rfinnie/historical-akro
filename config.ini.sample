@@ -6,4 +6,6 @@ vote_points=10
 rounds=10
 acro_length_string=2333333344444444455566
 acro_char_string=aaaaaabbbbbccccddddeeeeeffffgggghhhhiiiiijjjkllllmmmmnnnnnnooooopppppqrrrrrrsssssssttttttuuuvvwwxyyyz
-admin_password=password
+
+# The following is the MD5 hash of "fruity"
+admin_password=c16bbe51dadf8648f2337ba1a2915436

@@ -6,8 +6,10 @@
 
 $| = 0;
 use Net::IRC;
-srand;
 use Config::IniFiles;
+use Digest::MD5 qw(md5_hex);
+
+srand;
 $irc = new Net::IRC;
 
 %svrlist = ();
@@ -112,7 +114,7 @@ sub process_command {
   my $admin_password = $confini->val('config', 'admin_password');
 
   my($command, $password, @args) = split(/ /, substr(($event->args)[0], 1));
-  if($password eq $admin_password) {
+  if(md5_hex($password) eq $admin_password) {
     if($command eq "netstatus") {
       foreach $sname ($svrini->Sections) {
         $self->privmsg($event->nick, "$sname:");
